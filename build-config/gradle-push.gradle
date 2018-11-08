@@ -1,0 +1,127 @@
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+
+def isReleaseBuild() {
+    return VERSION_NAME.contains("SNAPSHOT") == false
+}
+
+def isLocal() {
+    return hasProperty('local') ? Boolean.parseBoolean(getProperty('local')) : true;
+}
+
+clean.doFirst {
+    delete "file://${project.getRootDir()}/repo"
+}
+
+def getReleaseRepositoryUrl() {
+    if (isLocal()) {
+        return hasProperty('RELEASE_REPOSITORY_LOCAL') ? RELEASE_REPOSITORY_LOCAL : "file://${project.getRootDir()}/repo"
+    } else {
+        return hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL : "https://api.bintray.com/maven/zhangzhenli/maven/qtshttp/"
+    }
+}
+
+def getSnapshotRepositoryUrl() {
+    if (isLocal()) {
+        return hasProperty('SNAPSHOT_REPOSITORY_LOCAL') ? SNAPSHOT_REPOSITORY_LOCAL : "file://${project.getRootDir()}/repo"
+    } else {
+        return hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL : "https://oss.sonatype.org/content/repositories/snapshots/"
+    }
+}
+
+def getRepositoryUsername() {
+    return hasProperty('SONATYPE_USERNAME') ? SONATYPE_USERNAME : ""
+}
+
+def getRepositoryPassword() {
+    return hasProperty('SONATYPE_PASSWORD') ? SONATYPE_PASSWORD : ""
+}
+
+afterEvaluate { project ->
+    uploadArchives {
+        //noinspection GradleMisplacedStatement
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+                pom.groupId = 'com.qnap.qdk'
+                pom.artifactId = 'qtshttp'
+                pom.version = VERSION_NAME
+
+                repository(url: getReleaseRepositoryUrl()) {
+                    authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+//                    proxy(host: "192.168.10.12", port: 80, type: 'http')
+                }
+                snapshotRepository(url: getSnapshotRepositoryUrl()) {
+                    authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+                }
+
+
+
+                pom.project {
+                    name 'QNAP NAS Java QDK'
+                    description 'QNAP NAS QDK Client Development, Java client development kit separated from the official Android Mobile QDK'
+                    url 'https://github.com/zawn/qtshttp'
+                    inceptionYear '2016'
+
+                    scm {
+                        url 'https://github.com/zawn/qtshttp.git'
+                    }
+
+                    developers {
+                        developer {
+                            name 'ZhangZhenli'
+                        }
+                    }
+
+                    licenses {
+                        license {
+                            name 'Apache License version 2.0'
+                        }
+                    }
+
+                    issueManagement {
+                        system 'GitHub Issues'
+                        url 'https://github.com/zawn/qtshttp/issues'
+                    }
+                }
+            }
+        }
+    }
+
+    signing {
+        required { isReleaseBuild() && gradle.taskGraph.hasTask("uploadArchives") }
+        sign configurations.archives
+    }
+
+    tasks.withType(Javadoc) {
+        options {
+            failOnError false
+            encoding "utf-8"
+            charSet "utf-8"
+            links "http://docs.oracle.com/javase/7/docs/api/"
+        }
+        // fix java 8 very strict.
+        if (JavaVersion.current().isJava8Compatible()) {
+            options.addStringOption('Xdoclint:none', '-quiet')
+        }
+    }
+
+
+    task javadocJar(type: Jar, dependsOn: javadoc) {
+        classifier = 'javadoc'
+        from javadoc
+    }
+
+    task sourcesJar(type: Jar) {
+        from sourceSets.main.allSource
+        classifier = 'sources'
+    }
+
+    artifacts {
+        archives jar
+        archives javadocJar
+        archives sourcesJar
+    }
+}
